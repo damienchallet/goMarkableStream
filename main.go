@@ -65,6 +65,7 @@ func main() {
 	fmt.Printf("Version: %s\n", bi.Main.Version)
 	var err error
 
+	remarkable.Init()
 	ifaces()
 	help := flag.Bool("h", false, "print usage")
 	unsafe := flag.Bool("unsafe", false, "disable authentication")
