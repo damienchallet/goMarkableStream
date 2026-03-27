@@ -122,13 +122,22 @@ func (h *StreamHandler) fetchAndSend(w io.Writer, rawData []uint8) {
 		log.Println(err)
 		return
 	}
+	if remarkable.Model == remarkable.Remarkable1 {
+		// rM1 uses gray16le in /dev/fb0: the high byte of each 16-bit pixel
+		// holds the 8-bit grayscale value. Scale it to 0-25 so the existing
+		// RLE encoder and JS decoder (which does value*10) produce correct grays.
+		for i := 0; i < len(rawData)-1; i += 2 {
+			rawData[i] = rawData[i+1] / 10
+		}
+	}
 	_, err = w.Write(rawData)
 	if err != nil {
 		log.Println("Error in writing", err)
 		return
 	}
-	if w, ok := w.(http.Flusher); ok {
-		w.Flush()
+	type flusher interface{ Flush() }
+	if f, ok := w.(flusher); ok {
+		f.Flush()
 	}
 }
 

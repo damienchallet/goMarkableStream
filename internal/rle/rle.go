@@ -32,6 +32,17 @@ type RLE struct {
 	sub io.Writer
 }
 
+// Flush propagates the flush to the underlying writer if it supports it.
+// This ensures data is sent to the HTTP client promptly.
+func (rlewriter *RLE) Flush() {
+	type flusher interface {
+		Flush()
+	}
+	if f, ok := rlewriter.sub.(flusher); ok {
+		f.Flush()
+	}
+}
+
 // Write encodes the data using run-length encoding (RLE) and writes the results to the subwriter.
 //
 // The data parameter is expected to be in the format []uint4, but is passed as []byte.
