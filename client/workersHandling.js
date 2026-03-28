@@ -35,12 +35,18 @@ streamWorker.onmessage = (event) => {
 
 // Determine the WebSocket protocol based on the current window protocol
 const eventURL = `/events`;
+// For rM2, the framebuffer is landscape; portrait=true rotates to portrait.
+// For rM1/RMPP, the framebuffer is natively portrait; portrait=false is already portrait.
+let effectivePortrait = portrait;
+if (DeviceModel !== 'Remarkable2') {
+	effectivePortrait = !portrait;
+}
 // Send the OffscreenCanvas to the worker for initialization
-eventWorker.postMessage({ 
-	type: 'init', 
+eventWorker.postMessage({
+	type: 'init',
 	width: screenWidth,
 	height: screenHeight,
-	portrait: portrait,
+	portrait: effectivePortrait,
 	eventURL: eventURL,
     maxXValue: MaxXValue,
     maxYValue: MaxYValue,

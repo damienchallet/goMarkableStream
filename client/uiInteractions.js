@@ -45,9 +45,14 @@ document.getElementById('checkbox').addEventListener('change', toggleDarkMode);
 document.getElementById('rotate').addEventListener('click', function () {
     portrait = !portrait;
     this.classList.toggle('toggled');
-    eventWorker.postMessage({ type: 'portrait', portrait: portrait });
+    // For rM1/RMPP (natively portrait), the effective orientation is inverted
+    let effectivePortrait = portrait;
+    if (DeviceModel !== 'Remarkable2') {
+        effectivePortrait = !portrait;
+    }
+    eventWorker.postMessage({ type: 'portrait', portrait: effectivePortrait });
     resizeVisibleCanvas();
-    
+
     // Show confirmation message
     showMessage(`Display ${portrait ? 'portrait' : 'landscape'} mode activated`, 2000);
 });

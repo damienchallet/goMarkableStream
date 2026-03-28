@@ -2,7 +2,7 @@ let height;
 let width;
 let eventURL;
 let portrait;
-let draw; 
+let draw;
 let latestX;
 let latestY;
 let maxXValue;
@@ -23,7 +23,6 @@ onmessage = (event) => {
 			break;
 		case 'portrait':
 			portrait = event.data.portrait;
-			// Handle the error, maybe show a user-friendly message or take some corrective action
 			break;
 		case 'terminate':
 			console.log("terminating worker");
@@ -39,28 +38,29 @@ async function initiateEventsListener() {
 	eventSource.onmessage = (event) => {
 		const message = JSON.parse(event.data);
 		if (message.Type === 3) {
-			if (message.Code === 24) {
-				draw = false;	
-				postMessage({ type: 'clear' });
-				//						clearLaser();
-			} else if (message.Code === 25) {
-				draw = true;	
-
+			if (message.Code === 24) { // ABS_PRESSURE
+				if (message.Value > 0) {
+					draw = false;
+					postMessage({ type: 'clear' });
+				} else {
+					draw = true; // Pen lifted, resume laser
+				}
+			} else if (message.Code === 25) { // ABS_DISTANCE
+				draw = true;
 			}
 		}
 		if (message.Type === 3) {
-			// Code 3: Update and draw laser pointer
+			// Update laser pointer position
 			if (portrait) {
-				if (message.Code === 1) { // Horizontal position
+				if (message.Code === 1) { // X-axis input
 					latestX = scaleValue(message.Value, maxXValue, width);
-				} else if (message.Code === 0) { // Vertical position
+				} else if (message.Code === 0) { // Y-axis input
 					latestY = height - scaleValue(message.Value, maxYValue, height);
 				}
 			} else {
-				// wrong
-				if (message.Code === 1) { // Horizontal position
+				if (message.Code === 1) {
 					latestY = scaleValue(message.Value, maxYValue, height);
-				} else if (message.Code === 0) { // Vertical position
+				} else if (message.Code === 0) {
 					latestX = scaleValue(message.Value, maxXValue, width);
 				}
 			}
