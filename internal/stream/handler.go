@@ -126,6 +126,9 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	rawData := *rawDataPtr
 	defer rawFrameBuffer.Put(rawDataPtr)
+	// rM1 reads a hardware framebuffer directly: there is no xochitl process
+	// driving the pen-event loop, so we poll on every tick regardless of input.
+	pollingMode := remarkable.Model == remarkable.Remarkable1
 	writing := true
 	stopWriting := time.NewTicker(2 * time.Second)
 	defer stopWriting.Stop()
@@ -144,6 +147,9 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			debug.Log("Stream: client disconnected (%s)", r.RemoteAddr)
 			return
 		case event := <-eventC:
+			if pollingMode {
+				break // rM1: ignore event-based write gating
+			}
 			// Track pressure value from ABS_PRESSURE events (code 24)
 			if event.Code == 24 {
 				currentPressure = event.Value
@@ -171,12 +177,15 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				writing = false
 			}
 		case <-stopWriting.C:
+			if pollingMode {
+				break // rM1: never stop writing
+			}
 			if writing {
 				debug.Log("Stream: writing paused (no input for 2s)")
 			}
 			writing = false
 		case <-ticker.C:
-			if writing {
+			if writing || pollingMode {
 				h.fetchAndSendDelta(w, rawData)
 			}
 		}

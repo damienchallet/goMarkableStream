@@ -3,9 +3,6 @@
 package remarkable
 
 const (
-	// Model defines the current device model being used
-	Model = Remarkable2
-
 	// ScreenWidth of the remarkable 2
 	ScreenWidth = 1872
 	// ScreenHeight of the remarkable 2
@@ -18,9 +15,13 @@ const (
 	MaxXValue = 15725
 	// MaxYValue represents the maximum Y coordinate value from /dev/input/event1 (ABS_Y)
 	MaxYValue = 20966
-
-	// PenInputDevice ...
-	PenInputDevice = "/dev/input/event1"
-	// TouchInputDevice ...
-	TouchInputDevice = "/dev/input/event2"
 )
+
+// Model defines the current device model being used (may be updated by Init())
+var Model DeviceModel = Remarkable2
+
+// PenInputDevice is the input device for pen events (may be updated by Init() for rM1)
+var PenInputDevice = "/dev/input/event1"
+
+// TouchInputDevice is the input device for touch events (may be updated by Init() for rM1)
+var TouchInputDevice = "/dev/input/event2"

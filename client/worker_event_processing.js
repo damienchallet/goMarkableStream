@@ -55,13 +55,15 @@ async function initiateEventsListener() {
 	eventSource.onmessage = (event) => {
 		const message = JSON.parse(event.data);
 		if (message.Type === 3) {
-			if (message.Code === 24) {
-				draw = false;
-				postMessage({ type: 'clear' });
-				//						clearLaser();
-			} else if (message.Code === 25) {
+			if (message.Code === 24) { // ABS_PRESSURE
+				if (message.Value > 0) {
+					draw = false;
+					postMessage({ type: 'clear' });
+				} else {
+					draw = true; // pressure released: resume laser
+				}
+			} else if (message.Code === 25) { // ABS_DISTANCE
 				draw = true;
-
 			}
 		}
 		if (message.Type === 3) {
@@ -83,6 +85,23 @@ async function initiateEventsListener() {
 						latestX = scaleValue(message.Value, maxXValue, width);
 					} else if (message.Code === 1) {
 						latestY = scaleValue(message.Value, maxYValue, height);
+					}
+				}
+			} else if (deviceModel === "Remarkable1") {
+				// rM1 transformations (portrait-native framebuffer, same axes as RM2)
+				if (portrait) {
+					// native portrait view (effectivePortrait=true sent to worker)
+					if (message.Code === 1) { // ABS_X
+						latestX = scaleValue(message.Value, maxXValue, width);
+					} else if (message.Code === 0) { // ABS_Y
+						latestY = height - scaleValue(message.Value, maxYValue, height);
+					}
+				} else {
+					// rotated to landscape
+					if (message.Code === 1) {
+						latestY = scaleValue(message.Value, maxYValue, height);
+					} else if (message.Code === 0) {
+						latestX = scaleValue(message.Value, maxXValue, width);
 					}
 				}
 			} else {

@@ -3,8 +3,6 @@
 package remarkable
 
 const (
-	Model = RemarkablePaperPro
-
 	// ScreenWidth of the remarkable paper pro
 	ScreenWidth = 1632
 	// ScreenHeight of the remarkable paper pro
@@ -15,7 +13,13 @@ const (
 	// These values are from Max values of /dev/input/event2 (ABS_X and ABS_Y)
 	MaxXValue = 11180
 	MaxYValue = 15340
-
-	PenInputDevice   = "/dev/input/event2"
-	TouchInputDevice = "/dev/input/event3"
 )
+
+// Model defines the current device model (arm64 is always RMPP)
+var Model DeviceModel = RemarkablePaperPro
+
+// PenInputDevice is the input device for pen events
+var PenInputDevice = "/dev/input/event2"
+
+// TouchInputDevice is the input device for touch events
+var TouchInputDevice = "/dev/input/event3"

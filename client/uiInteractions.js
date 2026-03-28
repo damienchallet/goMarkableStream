@@ -299,7 +299,13 @@ document.getElementById('rotate').addEventListener('click', function () {
     portrait = !portrait;
     this.classList.toggle('toggled');
     this.setAttribute('aria-pressed', portrait.toString());
-    eventWorker.postMessage({ type: 'portrait', portrait: portrait });
+    // For rM1 (portrait-native), invert the portrait flag sent to the event worker
+    // so it uses the correct coordinate transformation branch.
+    let effectivePortrait = portrait;
+    if (DeviceModel === 'Remarkable1') {
+        effectivePortrait = !portrait;
+    }
+    eventWorker.postMessage({ type: 'portrait', portrait: effectivePortrait });
     resizeVisibleCanvas();
     redrawScene(portrait, 1);
 

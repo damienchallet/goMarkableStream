@@ -131,12 +131,18 @@ initStreamWorker();
 
 // Determine the WebSocket protocol based on the current window protocol
 const eventURL = `/events`;
+// For rM1, the framebuffer is portrait-native: invert the portrait flag so
+// the event worker uses the correct coordinate branch.
+let initialEffectivePortrait = portrait;
+if (DeviceModel === 'Remarkable1') {
+	initialEffectivePortrait = !portrait;
+}
 // Send the OffscreenCanvas to the worker for initialization
 eventWorker.postMessage({
 	type: 'init',
 	width: screenWidth,
 	height: screenHeight,
-	portrait: portrait,
+	portrait: initialEffectivePortrait,
 	eventURL: eventURL,
     maxXValue: MaxXValue,
     maxYValue: MaxYValue,
