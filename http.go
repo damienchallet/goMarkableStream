@@ -85,19 +85,21 @@ func newIndexHandler(fs http.FileSystem) http.HandlerFunc {
 	staticFileServer := http.FileServer(fs)
 
 	data := struct {
-		ScreenWidth  int
-		ScreenHeight int
-		MaxXValue    int
-		MaxYValue    int
-		UseRLE       bool
-		DeviceModel  string
+		ScreenWidth   int
+		ScreenHeight  int
+		MaxXValue     int
+		MaxYValue     int
+		UseRLE        bool
+		DeviceModel   string
+		BytesPerPixel int
 	}{
-		ScreenWidth:  remarkable.ScreenWidth,
-		ScreenHeight: remarkable.ScreenHeight,
-		MaxXValue:    remarkable.MaxXValue,
-		MaxYValue:    remarkable.MaxYValue,
-		UseRLE:       c.RLECompression,
-		DeviceModel:  remarkable.Model.String(),
+		ScreenWidth:   remarkable.ScreenWidth,
+		ScreenHeight:  remarkable.ScreenHeight,
+		MaxXValue:     remarkable.MaxXValue,
+		MaxYValue:     remarkable.MaxYValue,
+		UseRLE:        c.RLECompression,
+		DeviceModel:   remarkable.Model.String(),
+		BytesPerPixel: remarkable.ScreenSizeBytes / (remarkable.ScreenWidth * remarkable.ScreenHeight),
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {

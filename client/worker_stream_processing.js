@@ -3,6 +3,7 @@ let height;
 let width;
 let rate;
 let useRLE;
+let bytesPerPixel = 4;
 
 onmessage = (event) => {
 	const data = event.data;
@@ -14,6 +15,7 @@ onmessage = (event) => {
 			withColor = event.data.withColor;
 			rate = event.data.rate;
 			useRLE = event.data.useRLE;
+			bytesPerPixel = event.data.bytesPerPixel || 4;
 			initiateStream();
 			break;
 		case 'withColorChanged':
@@ -63,6 +65,8 @@ async function initiateStream() {
 				// Process the received data chunk and render if needed.
                 if (useRLE) {
                     ({ offset, count } = decodeRLE(imageData, uint8Array, offset, count, withColor, pixelDataSize));
+                } else if (bytesPerPixel === 2) {
+                    offset = decodeRGB565(imageData, uint8Array, offset, pixelDataSize);
                 } else {
                     offset = decodeRaw(imageData, uint8Array, offset, pixelDataSize);
                 }
@@ -179,6 +183,52 @@ function decodeRLE(imageData, chunkData, offset, count, withColor, pixelDataSize
 	}
 
 	return { offset, count };
+}
+
+// Accumulation buffer for RGB565 input (2 bytes per pixel).
+// Filled across chunks; decoded to RGBA when a full frame is received.
+let rgb565Buf = null;
+let rgb565Pos = 0;
+
+function decodeRGB565(imageData, chunkData, offset, pixelDataSize) {
+    const frameSizeRGB565 = pixelDataSize / 2; // 2 bytes per pixel in, 4 bytes per pixel out
+
+    if (!rgb565Buf) {
+        rgb565Buf = new Uint8Array(frameSizeRGB565);
+    }
+
+    let start = 0;
+    while (start < chunkData.length) {
+        const remaining = frameSizeRGB565 - rgb565Pos;
+        const toCopy = Math.min(chunkData.length - start, remaining);
+        rgb565Buf.set(chunkData.subarray(start, start + toCopy), rgb565Pos);
+        rgb565Pos += toCopy;
+        start += toCopy;
+
+        if (rgb565Pos >= frameSizeRGB565) {
+            // Decode complete RGB565 frame to RGBA
+            for (let i = 0; i < frameSizeRGB565; i += 2) {
+                const lo = rgb565Buf[i];
+                const hi = rgb565Buf[i + 1];
+                const pixIdx = (i / 2) * 4;
+
+                // RGB565 little-endian: lo = GGGBBBBB, hi = RRRRRGGG
+                const r5 = (hi >> 3) & 0x1F;
+                const g6 = ((hi & 0x07) << 3) | ((lo >> 5) & 0x07);
+                const b5 = lo & 0x1F;
+
+                // Expand to 8-bit per channel
+                imageData[pixIdx]     = (r5 << 3) | (r5 >> 2);
+                imageData[pixIdx + 1] = (g6 << 2) | (g6 >> 4);
+                imageData[pixIdx + 2] = (b5 << 3) | (b5 >> 2);
+                imageData[pixIdx + 3] = 255;
+            }
+            postMessage({ type: 'update', data: imageData });
+            rgb565Pos = 0;
+        }
+    }
+
+    return offset; // offset not used for RGB565 (rgb565Pos tracks state instead)
 }
 
 function decodeRaw(imageData, chunkData, offset, pixelDataSize) {

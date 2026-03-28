@@ -10,7 +10,7 @@ if (DeviceModel === 'RemarkablePaperPro') {
 let flip = getBoolQueryParam('flip', defaultFlip);
 
 let withColor = getQueryParam('color');
-withColor = withColor !== null ? withColor === 'true' : (DeviceModel !== 'Remarkable1');
+withColor = withColor !== null ? withColor === 'true' : true;
 let rate = parseInt(getQueryParamOrDefault('rate', '200'), 10);
 
 // Remarkable Paper Pro uses BGRA format.

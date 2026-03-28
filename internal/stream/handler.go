@@ -84,7 +84,11 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer rawFrameBuffer.Put(rawData) // Return the slice to the pool when done
 	// the informations are int4, therefore store it in a uint8array to reduce data transfer
 	rleWriter := rle.NewRLE(w)
+	// On the rM1 there are no xochitl input events, so we poll the
+	// framebuffer on every tick and use a checksum to skip unchanged frames.
+	useChangeDetection := remarkable.Model == remarkable.Remarkable1
 	writing := true
+	lastSum := 0
 	stopWriting := time.NewTicker(2 * time.Second)
 	defer stopWriting.Stop()
 
@@ -103,9 +107,13 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				stopWriting.Reset(2000 * time.Millisecond)
 			}
 		case <-stopWriting.C:
-			writing = false
+			if !useChangeDetection {
+				writing = false
+			}
 		case <-ticker.C:
-			if writing {
+			if useChangeDetection {
+				h.fetchAndSendIfChanged(w, rawData, &lastSum)
+			} else if writing {
 				if h.useRLE {
 					h.fetchAndSend(rleWriter, rawData)
 				} else {
@@ -116,19 +124,33 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *StreamHandler) fetchAndSend(w io.Writer, rawData []uint8) {
+func (h *StreamHandler) fetchAndSendIfChanged(w io.Writer, rawData []uint8, lastSum *int) {
 	_, err := h.file.ReadAt(rawData, h.pointerAddr)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	if remarkable.Model == remarkable.Remarkable1 {
-		// rM1 uses gray16le in /dev/fb0: the high byte of each 16-bit pixel
-		// holds the 8-bit grayscale value. Scale it to 0-25 so the existing
-		// RLE encoder and JS decoder (which does value*10) produce correct grays.
-		for i := 0; i < len(rawData)-1; i += 2 {
-			rawData[i] = rawData[i+1] / 10
-		}
+	s := sum(rawData)
+	if s == *lastSum {
+		return
+	}
+	*lastSum = s
+	_, err = w.Write(rawData)
+	if err != nil {
+		log.Println("Error in writing", err)
+		return
+	}
+	type flusher interface{ Flush() }
+	if f, ok := w.(flusher); ok {
+		f.Flush()
+	}
+}
+
+func (h *StreamHandler) fetchAndSend(w io.Writer, rawData []uint8) {
+	_, err := h.file.ReadAt(rawData, h.pointerAddr)
+	if err != nil {
+		log.Println(err)
+		return
 	}
 	_, err = w.Write(rawData)
 	if err != nil {

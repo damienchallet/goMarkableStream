@@ -52,6 +52,11 @@ func validateConfiguration(c *configuration) error {
 			return errors.New("RLE compression is not supported on the Remarkable Paper Pro. Disable it by setting RLE_COMPRESSION=false")
 		}
 	}
+	if remarkable.Model == remarkable.Remarkable1 {
+		// rM1 framebuffer is RGB565; the RLE encoder only handles the rM2's
+		// grayscale byte format, so force raw streaming for rM1.
+		c.RLECompression = false
+	}
 
 	return nil
 }
