@@ -13,6 +13,7 @@ Its primary goal is to enable users to stream their reMarkable tablet screen to 
 
 ## Device support
 
+- **Remarkable 1: this repo adds experimental support for Remarkable 1. I let you compile the executable **
 - Remarkable 2
 - Remarkable Paper Pro (see notes below)
 
