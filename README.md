@@ -13,7 +13,8 @@ Its primary goal is to enable users to stream their reMarkable tablet screen to 
 
 ## Device support
 
-- **Remarkable 1: this repo adds experimental support for Remarkable 1. I let you compile the executable **
+- **Remarkable 1: this repo adds experimental support for Remarkable 1. I let you compile the executable** with this command (Linux) `GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -v -trimpath
+-ldflags="-s -w" .`
 - Remarkable 2
 - Remarkable Paper Pro (see notes below)
 
