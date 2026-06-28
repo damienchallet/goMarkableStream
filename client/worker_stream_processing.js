@@ -96,6 +96,9 @@ async function initiateStream() {
 		// Initialize previous frame buffer for delta decoding
 		previousFrame = new Uint8Array(pixelDataSize);
 
+		let offset = 0;
+		let count = 0;
+
 		const processData = async ({ done, value }) => {
 			try {
 				if (done) {
@@ -352,5 +355,89 @@ function handleDeltaFrame(payload, imageData, pixelDataSize) {
 
 	// Send frame update
 	postMessage({ type: 'update', data: imageData });
+}
+
+function decodeRLE(imageData, chunkData, offset, count, withColor, pixelDataSize) {
+	for (let i = 0; i < chunkData.length; i++) {
+		if (count === 0) {
+			// This byte represents how many times the next value will be repeated
+			count = chunkData[i];
+			continue;
+		}
+
+		const value = chunkData[i];
+		for (let c = 0; c < count; c++) {
+			offset += 4;
+			if (withColor) {
+				switch (value) {
+					case 30: // Transparent
+						imageData[offset+3] = 0;
+						break;
+					case 6: // Red
+						imageData[offset] = 255;
+						imageData[offset+1] = 0;
+						imageData[offset+2] = 0;
+						imageData[offset+3] = 255;
+						break;
+					case 8: // Red
+						imageData[offset] = 255;
+						imageData[offset+1] = 0;
+						imageData[offset+2] = 0;
+						imageData[offset+3] = 255;
+						break;
+					case 12: // Blue
+						imageData[offset] = 0;
+						imageData[offset+1] = 0;
+						imageData[offset+2] = 255;
+						imageData[offset+3] = 255;
+						break;
+					case 20: // Green
+						imageData[offset] = 125;
+						imageData[offset+1] = 184;
+						imageData[offset+2] = 86;
+						imageData[offset+3] = 255;
+						break;
+					case 24: // Yellow
+						imageData[offset] = 255;
+						imageData[offset+1] = 253;
+						imageData[offset+2] = 84;
+						imageData[offset+3] = 255;
+						break;
+					default:
+						imageData[offset] = value * 10;
+						imageData[offset+1] = value * 10;
+						imageData[offset+2] = value * 10;
+						imageData[offset+3] = 255;
+						break;
+				}
+			} else {
+				if (value === 30) {
+					imageData[offset+3] = 0;
+				} else {
+					imageData[offset] = value * 10;
+					imageData[offset+1] = value * 10;
+					imageData[offset+2] = value * 10;
+					imageData[offset+3] = 255;
+				}
+			}
+
+			if (offset >= pixelDataSize) {
+				break;
+			}
+		}
+
+		// Reset count after processing this run
+		count = 0;
+
+		if (offset >= pixelDataSize) {
+            // Send the frame
+            postMessage({ type: 'update', data: imageData });
+
+            // Reset for next frame
+            offset = 0;
+		}
+	}
+
+	return { offset, count };
 }
 

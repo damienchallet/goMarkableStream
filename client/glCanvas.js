@@ -210,6 +210,15 @@ gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
 const textureCoordinates = getTextureCoordinates();
 
 function getTextureCoordinates() {
+    if (typeof DeviceModel !== 'undefined' && DeviceModel === 'Remarkable1') {
+        // Mirrored horizontally for RM1
+        return [
+			0.0, 1.0,
+			1.0, 1.0,
+			0.0, 0.0,
+			1.0, 0.0,
+		];
+    }
     if (TextureFlipped) {
         // Paper Pro style or RM2 firmware 3.24+ (portrait orientation)
         return [
@@ -332,7 +341,11 @@ function updateTexture(newRawData, shouldRotate, scaleFactor) {
 
 	// Set rotation
 	const uRotationMatrixLocation = gl.getUniformLocation(shaderProgram, 'uRotationMatrix');
-	const rotationMatrix = shouldRotate ? makeRotationZMatrix(90) : makeRotationZMatrix(0);
+	let angle = shouldRotate ? 90 : 0;
+	if (typeof DeviceModel !== 'undefined' && DeviceModel === 'Remarkable1') {
+		angle = (angle + 180) % 360;
+	}
+	const rotationMatrix = makeRotationZMatrix(angle);
 	gl.uniformMatrix4fv(uRotationMatrixLocation, false, rotationMatrix);
 
 	// Set scaling
@@ -353,7 +366,11 @@ function convertBGRAtoRGBA(data) {
 // Redraw scene with current texture (for rotation changes without new frame data)
 function redrawScene(shouldRotate, scaleFactor) {
     const uRotationMatrixLocation = gl.getUniformLocation(shaderProgram, 'uRotationMatrix');
-    const rotationMatrix = shouldRotate ? makeRotationZMatrix(90) : makeRotationZMatrix(0);
+	let angle = shouldRotate ? 90 : 0;
+	if (typeof DeviceModel !== 'undefined' && DeviceModel === 'Remarkable1') {
+		angle = (angle + 180) % 360;
+	}
+    const rotationMatrix = makeRotationZMatrix(angle);
     gl.uniformMatrix4fv(uRotationMatrixLocation, false, rotationMatrix);
 
     const uScaleFactorLocation = gl.getUniformLocation(shaderProgram, 'uScaleFactor');

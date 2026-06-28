@@ -71,16 +71,16 @@ async function initiateEventsListener() {
 			// RMPP (portrait native): Code 0=X-axis, Code 1=Y-axis
 			// RM1 (portrait native): Code 1=X-axis, Code 0=Y-axis
 			if (deviceModel === "Remarkable1") {
-				// RM1 transformations
+				// RM1 transformations (flipped vertically to match 180-deg rotation + horizontal mirror)
 				if (portrait) {
 					if (message.Code === 1) { // X-axis input
 						latestX = scaleValue(message.Value, maxXValue, width);
 					} else if (message.Code === 0) { // Y-axis input
-						latestY = height - scaleValue(message.Value, maxYValue, height);
+						latestY = scaleValue(message.Value, maxYValue, height);
 					}
 				} else {
 					if (message.Code === 1) {
-						latestY = scaleValue(message.Value, maxYValue, height);
+						latestY = height - scaleValue(message.Value, maxYValue, height);
 					} else if (message.Code === 0) {
 						latestX = scaleValue(message.Value, maxXValue, width);
 					}
