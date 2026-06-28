@@ -10,6 +10,17 @@ import (
 	"strings"
 )
 
+// getFramePointer locates the framebuffer in memory for RMPP.
+//
+// RMPP uses a modern GPU/DRM display stack (/dev/dri/card0) rather than
+// the classic framebuffer device. This requires a more complex algorithm:
+// 1. Find the last /dev/dri/card0 mapping in /proc/[pid]/maps
+// 2. Read memory headers to dynamically calculate the buffer offset
+// 3. Iterate until the correct buffer size is found
+//
+// This differs from RM2's simpler /dev/fb0 approach due to the GPU architecture.
+// Both devices now use BGRA format, but the underlying hardware architecture
+// necessitates different pointer detection methods.
 func getFramePointer(pid string) (int64, error) {
 	// Find the memory range for the framebuffer
 	startAddress, err := getMemoryRange(pid)
@@ -97,7 +108,9 @@ func calculateFramePointer(pid string, startAddress int64) (int64, error) {
 
 		// Seek to the start address plus offset and read the header
 		// The header helps identify the size of the subsequent memory block.
-		file.Seek(startAddress+offset+8, 0)
+		if _, err := file.Seek(startAddress+offset+8, 0); err != nil {
+			return 0, fmt.Errorf("failed to seek in memory file: %w", err)
+		}
 		header := make([]byte, 8)
 		_, err := file.Read(header)
 		if err != nil {
@@ -110,4 +123,16 @@ func calculateFramePointer(pid string, startAddress int64) (int64, error) {
 
 	// Return the calculated frame pointer address
 	return startAddress + offset, nil
+}
+
+func setupConfig() {
+	Config = FramebufferConfig{
+		Width:          ScreenWidth,
+		Height:         ScreenHeight,
+		BytesPerPixel:  BytesPerPixelBGRA,
+		SizeBytes:      ScreenSizeBytes,
+		PointerOffset:  0,
+		UseBGRA:        true,
+		TextureFlipped: true,
+	}
 }

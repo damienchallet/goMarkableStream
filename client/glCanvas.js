@@ -1,16 +1,36 @@
 // WebGL initialization
 // Use -10,-10 as the default laser coordinate (off-screen) to hide the pointer initially
-let laserX = -10; 
+let laserX = -10;
 let laserY = -10;
-const gl = canvas.getContext('webgl', { 
+const MAX_TRAIL_POINTS = 8;
+let trailPositions = [];  // Array of {x, y, timestamp}
+let trailEnabled = true;  // Toggle for trail feature
+const gl = canvas.getContext('webgl', {
     antialias: true,
     preserveDrawingBuffer: true,  // Important for proper rendering
     alpha: true                   // Enable transparency
 });
 
+// Check for anisotropic filtering extension
+const anisoExt = gl.getExtension('EXT_texture_filter_anisotropic') ||
+                 gl.getExtension('MOZ_EXT_texture_filter_anisotropic') ||
+                 gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic');
+
+let maxAnisotropy = 1;
+if (anisoExt) {
+	maxAnisotropy = gl.getParameter(anisoExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+	console.log('Anisotropic filtering available, max:', maxAnisotropy);
+}
 
 if (!gl) {
-	alert('WebGL not supported');
+	// Wait for DOM to be ready, then show styled error
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', () => {
+			showConnectionError('WebGL is not supported by your browser. Please use a modern browser with WebGL support.', false);
+		});
+	} else {
+		showConnectionError('WebGL is not supported by your browser. Please use a modern browser with WebGL support.', false);
+	}
 }
 
 // Vertex shader program
@@ -38,49 +58,63 @@ varying highp vec2 vTextureCoord;
 uniform sampler2D uSampler;
 uniform float uLaserX;
 uniform float uLaserY;
-uniform bool uDarkMode;
-uniform float uContrastLevel;
 
-// Constants for laser pointer visualization
+const int MAX_TRAIL_POINTS = 8;
+uniform float uTrailX[MAX_TRAIL_POINTS];
+uniform float uTrailY[MAX_TRAIL_POINTS];
+uniform int uTrailCount;
+
 const float LASER_RADIUS = 6.0;
 const float LASER_EDGE_SOFTNESS = 2.0;
 const vec3 LASER_COLOR = vec3(1.0, 0.0, 0.0);
 
-// Constants for image processing
-const float BRIGHTNESS = 0.05;       // Slight brightness boost
-const float SHARPNESS = 0.5;         // Sharpness level
-
-// Get texture color without any sharpening - better for handwriting
-vec4 getBaseTexture(sampler2D sampler, vec2 texCoord) {
-    return texture2D(sampler, texCoord);
-}
-
 void main(void) {
-    // Get base texture color directly - no sharpening for clearer handwriting
-    vec4 texColor = getBaseTexture(uSampler, vTextureCoord);
-    
-    // Apply contrast adjustments based on the slider value
-    vec3 adjusted = (texColor.rgb - 0.5) * uContrastLevel + 0.5;
-    texColor.rgb = clamp(adjusted, 0.0, 1.0);
-    
-    // Calculate laser pointer effect
-    float dx = gl_FragCoord.x - uLaserX;
-    float dy = gl_FragCoord.y - uLaserY;
-    float distance = sqrt(dx * dx + dy * dy);
-    
-    if (uDarkMode) {
-        // Invert colors in dark mode, but preserve alpha
-        texColor.rgb = 1.0 - texColor.rgb;
+    vec4 texColor = texture2D(uSampler, vTextureCoord);
+    vec4 finalColor = texColor;
+
+    // Render trail points (oldest to newest, back to front)
+    for (int i = 0; i < MAX_TRAIL_POINTS; i++) {
+        if (i >= uTrailCount) break;
+
+        float x = uTrailX[i];
+        float y = uTrailY[i];
+
+        if (x > 0.0 && y > 0.0) {
+            float dx = gl_FragCoord.x - x;
+            float dy = gl_FragCoord.y - y;
+            float distance = sqrt(dx * dx + dy * dy);
+
+            // Exponential fade for more laser-like appearance
+            // i=0 is oldest (should be faint), higher i is newer (should be bright)
+            float normalizedPosition = float(i) / max(1.0, float(uTrailCount - 1));
+            float baseOpacity = pow(normalizedPosition, 3.0);  // Exponential increase
+
+            // Smaller trail radius (3px vs 8px for main pointer)
+            const float TRAIL_RADIUS = 3.0;
+            const float TRAIL_EDGE = 1.0;
+
+            if (distance < TRAIL_RADIUS + TRAIL_EDGE) {
+                // Smooth anti-aliased edge
+                float fade = smoothstep(TRAIL_RADIUS - TRAIL_EDGE, TRAIL_RADIUS + TRAIL_EDGE, distance);
+                float alpha = (1.0 - fade) * baseOpacity;
+                finalColor = mix(finalColor, vec4(LASER_COLOR, 1.0), alpha);
+            }
+        }
     }
-    
-    // Simple laser pointer - more reliable rendering
-    if (distance < 8.0 && uLaserX > 0.0 && uLaserY > 0.0) {
-        // Create solid circle with slight fade at edge
-        float fade = 1.0 - smoothstep(6.0, 8.0, distance);
-        gl_FragColor = vec4(1.0, 0.0, 0.0, fade); // Red with fade at edge
-    } else {
-        gl_FragColor = texColor;
+
+    // Current laser pointer (main pointer, rendered last for highest priority)
+    if (uLaserX > 0.0 && uLaserY > 0.0) {
+        float dx = gl_FragCoord.x - uLaserX;
+        float dy = gl_FragCoord.y - uLaserY;
+        float distance = sqrt(dx * dx + dy * dy);
+
+        if (distance < 8.0) {
+            float fade = 1.0 - smoothstep(6.0, 8.0, distance);
+            finalColor = vec4(LASER_COLOR, fade);
+        }
     }
+
+    gl_FragColor = finalColor;
 }
 `;
 
@@ -108,7 +142,8 @@ function initShaderProgram(gl, vsSource, fsSource) {
 	gl.linkProgram(shaderProgram);
 
 	if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-		alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+		console.error('Unable to initialize shader program:', gl.getProgramInfoLog(shaderProgram));
+		showConnectionError('Unable to initialize graphics. Your browser may not support the required WebGL features.', false);
 		return null;
 	}
 
@@ -122,7 +157,8 @@ function initShaderProgram(gl, vsSource, fsSource) {
 		gl.compileShader(shader);
 
 		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-			alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+			console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+			showConnectionError('Unable to compile graphics shaders. Your browser may not support the required WebGL features.', false);
 			gl.deleteShader(shader);
 			return null;
 		}
@@ -144,8 +180,9 @@ const programInfo = {
 		uSampler: gl.getUniformLocation(shaderProgram, 'uSampler'),
         uLaserX: gl.getUniformLocation(shaderProgram, 'uLaserX'),
         uLaserY: gl.getUniformLocation(shaderProgram, 'uLaserY'),
-        uDarkMode: gl.getUniformLocation(shaderProgram, 'uDarkMode'),
-        uContrastLevel: gl.getUniformLocation(shaderProgram, 'uContrastLevel'),
+        uTrailX: gl.getUniformLocation(shaderProgram, 'uTrailX'),
+        uTrailY: gl.getUniformLocation(shaderProgram, 'uTrailY'),
+        uTrailCount: gl.getUniformLocation(shaderProgram, 'uTrailCount'),
 	},
 };
 
@@ -173,22 +210,24 @@ gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
 const textureCoordinates = getTextureCoordinates();
 
 function getTextureCoordinates() {
-    if (DeviceModel === "Remarkable2") {
+    if (TextureFlipped) {
+        // Paper Pro style or RM2 firmware 3.24+ (portrait orientation)
         return [
-			1.0, 1.0,
-			0.0, 1.0,
 			1.0, 0.0,
 			0.0, 0.0,
+			1.0, 1.0,
+			0.0, 1.0,
 		];
     } else {
+        // Legacy RM2 style (pre-3.24, landscape orientation)
         return [
-			1.0, 0.0,
-			0.0, 0.0,
 			1.0, 1.0,
 			0.0, 1.0,
+			1.0, 0.0,
+			0.0, 0.0,
 		];
-    };
-};
+    }
+}
 
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
 
@@ -200,20 +239,22 @@ gl.bindTexture(gl.TEXTURE_2D, texture);
 // Set the parameters so we can render any size image.
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-// To apply a smoothing algorithm, you'll likely want to adjust the texture filtering parameters in your WebGL setup. 
+// To apply a smoothing algorithm, you'll likely want to adjust the texture filtering parameters in your WebGL setup.
 // For smoothing, typically gl.LINEAR is used for both gl.TEXTURE_MIN_FILTER and gl.TEXTURE_MAG_FILTER
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
+// Enable anisotropic filtering if available
+if (anisoExt) {
+	gl.texParameterf(gl.TEXTURE_2D, anisoExt.TEXTURE_MAX_ANISOTROPY_EXT, maxAnisotropy);
+	console.log('Anisotropic filtering enabled with max samples:', maxAnisotropy);
+}
+
 // Upload the image into the texture.
 let imageData = new ImageData(screenWidth, screenHeight);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageData);
-
-// Variables to track display state
-let isDarkMode = false;
-let contrastValue = 1.15; // Default contrast value
 
 // Draw the scene
 function drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture) {
@@ -222,11 +263,8 @@ function drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture)
 		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 	}
 	
-	// Adjust background color based on dark mode
-	const bgColor = isDarkMode 
-		? [0.12, 0.12, 0.13, 0.25]  // Darker, more neutral dark mode bg
-		: [0.98, 0.98, 0.98, 0.25]; // Nearly white light mode bg
-	gl.clearColor(bgColor[0], bgColor[1], bgColor[2], bgColor[3]);
+	// Set background color
+	gl.clearColor(0.98, 0.98, 0.98, 0.25);
 	
 	// Enable alpha blending for transparency
 	gl.enable(gl.BLEND);
@@ -264,10 +302,19 @@ function drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture)
 	// Set the laser coordinates
     gl.uniform1f(programInfo.uniformLocations.uLaserX, laserX);
     gl.uniform1f(programInfo.uniformLocations.uLaserY, laserY);
-    
-    // Set display flags
-    gl.uniform1i(programInfo.uniformLocations.uDarkMode, isDarkMode ? 1 : 0);
-    gl.uniform1f(programInfo.uniformLocations.uContrastLevel, contrastValue);
+
+	// Set trail positions
+	const trailX = new Float32Array(MAX_TRAIL_POINTS);
+	const trailY = new Float32Array(MAX_TRAIL_POINTS);
+
+	for (let i = 0; i < trailPositions.length; i++) {
+		trailX[i] = trailPositions[i].x;
+		trailY[i] = trailPositions[i].y;
+	}
+
+	gl.uniform1fv(programInfo.uniformLocations.uTrailX, trailX);
+	gl.uniform1fv(programInfo.uniformLocations.uTrailY, trailY);
+	gl.uniform1i(programInfo.uniformLocations.uTrailCount, trailPositions.length);
 
 	gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -285,7 +332,7 @@ function updateTexture(newRawData, shouldRotate, scaleFactor) {
 
 	// Set rotation
 	const uRotationMatrixLocation = gl.getUniformLocation(shaderProgram, 'uRotationMatrix');
-	const rotationMatrix = shouldRotate ? makeRotationZMatrix(270) : makeRotationZMatrix(0);
+	const rotationMatrix = shouldRotate ? makeRotationZMatrix(90) : makeRotationZMatrix(0);
 	gl.uniformMatrix4fv(uRotationMatrixLocation, false, rotationMatrix);
 
 	// Set scaling
@@ -303,19 +350,36 @@ function convertBGRAtoRGBA(data) {
     }
 }
 
-// Call `updateTexture` with new data whenever you need to update the image
+// Redraw scene with current texture (for rotation changes without new frame data)
+function redrawScene(shouldRotate, scaleFactor) {
+    const uRotationMatrixLocation = gl.getUniformLocation(shaderProgram, 'uRotationMatrix');
+    const rotationMatrix = shouldRotate ? makeRotationZMatrix(90) : makeRotationZMatrix(0);
+    gl.uniformMatrix4fv(uRotationMatrixLocation, false, rotationMatrix);
 
-// Let's create a function that resizes the canvas element. 
+    const uScaleFactorLocation = gl.getUniformLocation(shaderProgram, 'uScaleFactor');
+    gl.uniform1f(uScaleFactorLocation, scaleFactor);
+
+    drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
+}
+
+// Let's create a function that resizes the canvas element.
 // This function will adjust the canvas's width and height attributes based on its display size, which can be set using CSS or directly in JavaScript.
 function resizeGLCanvas(canvas) {
+	// Get device pixel ratio for high-DPI displays
+	const dpr = window.devicePixelRatio || 1;
+
 	const displayWidth = canvas.clientWidth;
 	const displayHeight = canvas.clientHeight;
 
+	// Calculate backing store size with DPR
+	const width = Math.floor(displayWidth * dpr);
+	const height = Math.floor(displayHeight * dpr);
+
 	// Check if the canvas size is different from its display size
-	if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-		// Make the canvas the same size as its display size
-		canvas.width = displayWidth;
-		canvas.height = displayHeight;
+	if (canvas.width !== width || canvas.height !== height) {
+		// Make the canvas the same size as its backing store
+		canvas.width = width;
+		canvas.height = height;
 		return true; // indicates that the size was changed
 	}
 
@@ -324,70 +388,60 @@ function resizeGLCanvas(canvas) {
 
 // Direct laser pointer position - no animation for more reliability
 function updateLaserPosition(x, y) {
+    // Check if laser is disabled
+    if (!laserEnabled) {
+        laserX = -10;
+        laserY = -10;
+        trailPositions = [];
+        return;
+    }
+
     // If x and y are valid positive values
     if (x > 0 && y > 0) {
         // Position is now directly proportional to canvas size
-        laserX = x * (gl.canvas.width / screenWidth);
-        laserY = gl.canvas.height - (y * (gl.canvas.height / screenHeight));
+        const scaledX = x * (gl.canvas.width / screenWidth);
+        const scaledY = gl.canvas.height - (y * (gl.canvas.height / screenHeight));
+
+        laserX = scaledX;
+        laserY = scaledY;
+
+        // Add to trail if enabled and position changed significantly
+        if (trailEnabled) {
+            const lastPos = trailPositions[trailPositions.length - 1];
+            const moved = !lastPos ||
+                Math.abs(scaledX - lastPos.x) > 2 ||
+                Math.abs(scaledY - lastPos.y) > 2;
+
+            if (moved) {
+                trailPositions.push({
+                    x: scaledX,
+                    y: scaledY,
+                    timestamp: Date.now()
+                });
+
+                // Keep only last N positions
+                if (trailPositions.length > MAX_TRAIL_POINTS) {
+                    trailPositions.shift();
+                }
+            }
+        }
     } else {
         // Hide the pointer by moving it off-screen
         laserX = -10;
         laserY = -10;
+        // Clear trail when pointer hidden
+        trailPositions = [];
     }
-    
+
     // Redraw immediately
     drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
 }
 
-// Function to update dark mode state with transition effect
-let darkModeTransition = 0; // 0 = light mode, 1 = dark mode
-let transitionActive = false;
-
-function setDarkMode(darkModeEnabled) {
-    isDarkMode = darkModeEnabled;
-    
-    // If not already transitioning, start a smooth transition
-    if (!transitionActive) {
-        transitionActive = true;
-        const startTime = performance.now();
-        const duration = 300; // transition duration in ms
-        
-        function animateDarkModeTransition(timestamp) {
-            const elapsed = timestamp - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Update transition value (0 to 1 for light to dark)
-            darkModeTransition = darkModeEnabled ? progress : 1 - progress;
-            
-            // Render with current transition value
-            drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
-            
-            // Continue animation if not complete
-            if (progress < 1) {
-                requestAnimationFrame(animateDarkModeTransition);
-            } else {
-                transitionActive = false;
-            }
-        }
-        
-        requestAnimationFrame(animateDarkModeTransition);
-    } else {
-        // Just update the scene if already transitioning
-        drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
-    }
+// Clear laser pointer (hide it off-screen)
+function clearLaser() {
+    laserX = -10;
+    laserY = -10;
+    trailPositions = [];
+    drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
 }
 
-// Function to set contrast level
-function setContrast(contrastLevel) {
-    // Store the contrast value (between 1.0 and 3.0)
-    contrastValue = parseFloat(contrastLevel);
-    
-    // If the value is valid, update rendering
-    if (!isNaN(contrastValue) && contrastValue >= 1.0 && contrastValue <= 3.0) {
-        // Update the scene with new contrast
-        drawScene(gl, programInfo, positionBuffer, textureCoordBuffer, texture);
-        
-        // Save user preference to localStorage
-        localStorage.setItem('contrastLevel', contrastValue);
-    }
-}

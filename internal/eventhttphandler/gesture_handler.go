@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"syscall"
 	"time"
 
 	"github.com/owulveryck/goMarkableStream/internal/events"
@@ -34,7 +33,7 @@ type GestureHandler struct {
 }
 
 type gesture struct {
-	leftDistance, rightDistance, upDistance, downDistance int
+	leftDistance, rightDistance, upDistance, downDistance int64
 }
 
 func (g *gesture) MarshalJSON() ([]byte, error) {
@@ -45,7 +44,7 @@ func (g *gesture) String() string {
 	return fmt.Sprintf("Left: %v, Right: %v, Up: %v, Down: %v", g.leftDistance, g.rightDistance, g.upDistance, g.downDistance)
 }
 
-func (g *gesture) sum() int {
+func (g *gesture) sum() int64 {
 	return g.leftDistance + g.rightDistance + g.upDistance + g.downDistance
 }
 
@@ -58,7 +57,13 @@ func (g *gesture) reset() {
 
 // ServeHTTP implements http.Handler
 func (h *GestureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	eventC := h.inputEventBus.Subscribe("eventListener")
+	// Subscribe only to Touch events of type EvAbs
+	touchSource := events.Touch
+	absType := uint16(events.EvAbs)
+	eventC := h.inputEventBus.SubscribeWithFilter("eventListener", pubsub.EventFilter{
+		Source: &touchSource,
+		Type:   &absType,
+	})
 	defer func() {
 		h.inputEventBus.Unsubscribe(eventC)
 	}()
@@ -99,12 +104,6 @@ func (h *GestureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			lastEventX = events.InputEventFromSource{}
 			lastEventY = events.InputEventFromSource{}
 		case event := <-eventC:
-			if event.Source != events.Touch {
-				continue
-			}
-			if event.Type != events.EvAbs {
-				continue
-			}
 			switch event.Code {
 			case codeXAxis:
 				// This is the initial event, do not compute the distance
@@ -114,9 +113,9 @@ func (h *GestureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				distance := event.Value - lastEventX.Value
 				if distance < 0 {
-					currentGesture.rightDistance += -int(distance)
+					currentGesture.rightDistance += -int64(distance)
 				} else {
-					currentGesture.leftDistance += int(distance)
+					currentGesture.leftDistance += int64(distance)
 				}
 				lastEventX = event
 			case codeYAxis:
@@ -127,25 +126,13 @@ func (h *GestureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				distance := event.Value - lastEventY.Value
 				if distance < 0 {
-					currentGesture.upDistance += -int(distance)
+					currentGesture.upDistance += -int64(distance)
 				} else {
-					currentGesture.downDistance += int(distance)
+					currentGesture.downDistance += int64(distance)
 				}
 				lastEventY = event
 			}
 			tick.Reset(gestureMaxInterval)
 		}
 	}
-}
-
-func abs(x int32) int32 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-// timevalToTime converts syscall.Timeval to time.Time
-func timevalToTime(tv syscall.Timeval) time.Time {
-	return time.Unix(int64(tv.Sec), int64(tv.Usec)*1000)
 }

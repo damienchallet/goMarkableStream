@@ -10,22 +10,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.24.0
+          go-version: '1.26'
 
-      - name: Build
+      - name: Build (without Tailscale)
         run: go build -v ./...
+
+      - name: Build (with Tailscale)
+        run: go build -v -tags tailscale ./...
 
       - name: Test
         run: go test -v ./...
-
-      - name: GoGitOps Step
-        id: gogitops
-        uses: beaujr/gogitops-action@v0.2
-        with:
-          github-actions-user: owulveryck
-          github-actions-token: ${{secrets.GITHUB_TOKEN}}

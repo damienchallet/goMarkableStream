@@ -78,6 +78,7 @@ func Init() {
 		TouchInputDevice = "/dev/input/event2"
 	}
 	log.Printf("Detected device: %v (%dx%d)", Model, ScreenWidth, ScreenHeight)
+	setupConfig()
 }
 
 func detectModel() DeviceModel {

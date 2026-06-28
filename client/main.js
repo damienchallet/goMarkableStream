@@ -1,4 +1,5 @@
 const rawCanvas = new OffscreenCanvas(screenWidth, screenHeight); // Define width and height as needed
+let laserEnabled = true;
 let portrait = getQueryParam('portrait');
 portrait = portrait !== null ? portrait === 'true' : false;
 
@@ -13,11 +14,8 @@ let withColor = getQueryParam('color');
 withColor = withColor !== null ? withColor === 'true' : true;
 let rate = parseInt(getQueryParamOrDefault('rate', '200'), 10);
 
-// Remarkable Paper Pro uses BGRA format.
-let useBGRA = false;
-if (DeviceModel === 'RemarkablePaperPro') {
-	useBGRA = true;
-};
+// Use BGRA format flag from server (Paper Pro or RM2 firmware 3.24+)
+let useBGRA = UseBGRA;
 
 //let portrait = false;
 // Get the 'present' parameter from the URL
@@ -29,7 +27,7 @@ const messageDiv = document.getElementById('message');
 
 
 // Initialize the worker
-const streamWorker = new Worker('worker_stream_processing.js');
+let streamWorker = new Worker('worker_stream_processing.js');
 const eventWorker = new Worker('worker_event_processing.js');
 const gestureWorker = new Worker('worker_gesture_processing.js');
 function getQueryParamOrDefault(param, defaultValue) {
@@ -55,6 +53,15 @@ function getBoolQueryParam(param, defaultValue = false) {
 }
 
 window.onload = async function() {
+	// Initialize auth UI
+	initAuthUI();
+
+	// Check if JWT auth is enabled and user is not authenticated
+	if (JWTEnabled && !isAuthenticated()) {
+		showLoginModal();
+		return; // Don't proceed until user logs in
+	}
+
 	// Function to get the value of a query parameter by name
 	// Get the 'present' parameter from the URL
 	const presentURL = getQueryParam('present');
@@ -62,13 +69,47 @@ window.onload = async function() {
 	// Set the iframe source if the URL is available
 	if (presentURL) {
 		document.getElementById('content').src = presentURL;
+		document.getElementById('layersMenuItem').style.display = '';  // Show layers menu
 	}
-	
-	// Update version in the sidebar footer
-	const version = await fetchVersion();
-	const versionElement = document.querySelector('.sidebar-footer small');
-	if (versionElement) {
-		versionElement.textContent = `goMarkableStream ${version}`;
+
+	// Show onboarding hint for first-time users
+	showOnboardingHint();
+
+	// Check Funnel availability and status
+	try {
+		const funnelResponse = await authFetch('/funnel');
+		if (funnelResponse.ok) {
+			const funnelData = await funnelResponse.json();
+			if (funnelData.available) {
+				document.getElementById('funnelMenuItem').style.display = '';
+				if (funnelData.enabled) {
+					document.getElementById('funnelButton').classList.add('toggled');
+					document.getElementById('funnelButton').setAttribute('aria-pressed', 'true');
+
+					const footerElement = document.querySelector('.sidebar-footer small');
+					// Show Funnel URL in footer
+					if (footerElement && funnelData.url) {
+						footerElement.textContent = funnelData.url;
+						footerElement.title = 'Public Funnel URL';
+
+						// Generate and show QR code
+						const qrContainer = document.getElementById('qrCodeContainer');
+						if (qrContainer && typeof generateQRCode === 'function') {
+							const qrSvg = generateQRCode(funnelData.url, 120);
+							qrContainer.innerHTML = qrSvg;
+							qrContainer.style.display = 'flex';
+						}
+					}
+
+					// Display temporary credentials if available
+					if (funnelData.tempCredentials && typeof displayFunnelCredentials === 'function') {
+						displayFunnelCredentials(funnelData.tempCredentials);
+					}
+				}
+			}
+		}
+	} catch (error) {
+		console.error('Error checking funnel status:', error);
 	}
 };
 

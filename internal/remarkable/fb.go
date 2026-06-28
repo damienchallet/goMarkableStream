@@ -23,3 +23,15 @@ func (dummypicture *dummyPicture) ReadAt(p []byte, off int64) (n int, err error)
 	defer f.Close()
 	return f.ReadAt(p, off)
 }
+
+func setupConfig() {
+	Config = FramebufferConfig{
+		Width:          ScreenWidth,
+		Height:         ScreenHeight,
+		BytesPerPixel:  ScreenSizeBytes / (ScreenWidth * ScreenHeight),
+		SizeBytes:      ScreenSizeBytes,
+		PointerOffset:  0,
+		UseBGRA:        false,
+		TextureFlipped: false,
+	}
+}
