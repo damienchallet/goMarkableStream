@@ -58,7 +58,7 @@ func Init() {
 		MaxXValue = 15725
 		MaxYValue = 20966
 		PenInputDevice = "/dev/input/event0"
-		TouchInputDevice = "/dev/input/event1"
+		TouchInputDevice = "/dev/input/event2"
 	case RemarkablePaperPro:
 		ScreenWidth = 1632
 		ScreenHeight = 2154
@@ -87,7 +87,10 @@ func detectModel() DeviceModel {
 	}
 	data, err := os.ReadFile("/proc/device-tree/model")
 	if err != nil {
-		return Remarkable2
+		data, err = os.ReadFile("/sys/devices/soc0/machine")
+		if err != nil {
+			return Remarkable2
+		}
 	}
 	model := strings.TrimRight(string(data), "\x00")
 	if strings.Contains(model, "Prototype 1") || strings.Contains(model, "reMarkable 1") {

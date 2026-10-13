@@ -21,8 +21,11 @@ function loadSavedPreferences() {
             portrait = isPortrait;
             const rotateBtn = document.getElementById('rotate');
             rotateBtn.classList.toggle('toggled', portrait);
-            rotateBtn.setAttribute('aria-pressed', portrait.toString());
-            eventWorker.postMessage({ type: 'portrait', portrait: portrait });
+            let effectivePortrait = portrait;
+            if (DeviceModel !== 'Remarkable2') {
+                effectivePortrait = !portrait;
+            }
+            eventWorker.postMessage({ type: 'portrait', portrait: effectivePortrait });
             resizeVisibleCanvas();
             redrawScene(portrait, 1);
         }
