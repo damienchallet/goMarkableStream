@@ -2,11 +2,13 @@ package stream
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -116,6 +118,96 @@ func TestConcurrentRateModification(t *testing.T) {
 	// Wait for all goroutines to finish
 	for i := 0; i < concurrentRequests; i++ {
 		<-doneChan
+	}
+}
+
+// streamingWriter discards frames and signals when the first one lands, which
+// is the point at which the handler is known to own the encoder.
+type streamingWriter struct {
+	hdr    http.Header
+	once   sync.Once
+	closed chan struct{}
+}
+
+func newStreamingWriter() *streamingWriter {
+	return &streamingWriter{hdr: http.Header{}, closed: make(chan struct{})}
+}
+
+func (s *streamingWriter) Header() http.Header { return s.hdr }
+func (s *streamingWriter) WriteHeader(int)     {}
+func (s *streamingWriter) Flush()              {}
+func (s *streamingWriter) Write(p []byte) (int, error) {
+	s.once.Do(func() { close(s.closed) })
+	return len(p), nil
+}
+
+// TestStreamHandler_SecondConnectionRejected covers the concurrency contract of
+// StreamHandler itself. Its delta encoder is per-connection state, and until now
+// two concurrent ServeHTTP calls would trample it — ThrottlingMiddleware kept
+// that from biting in production, but the handler must hold on its own, since
+// net/http is free to call any handler concurrently.
+func TestStreamHandler_SecondConnectionRejected(t *testing.T) {
+	h := NewStreamHandler(&countingReaderAt{}, 0, pubsub.NewPubSub(), 0.30)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	first := newStreamingWriter()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/stream?rate=5", nil).WithContext(ctx))
+	}()
+
+	select {
+	case <-first.closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first connection never streamed a frame")
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stream", nil))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("second connection: status %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+
+	// Releasing memory under an active stream must be a no-op, not a block and
+	// not a concurrent reset of buffers the encoder is using.
+	released := make(chan struct{})
+	go func() { h.ReleaseMemory(); close(released) }()
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Error("ReleaseMemory blocked while a stream was active")
+	}
+
+	cancel()
+	<-done
+
+	// Once the stream is gone the handler accepts a new connection again.
+	if !h.session.TryLock() {
+		t.Error("encoder still held after the connection closed")
+	} else {
+		h.session.Unlock()
+	}
+}
+
+// TestStreamHandler_PreflightDuringStream checks that the CORS preflight is
+// answered even while a stream holds the encoder: it is taken before the lock
+// precisely so a browser check is never turned away with a 429.
+func TestStreamHandler_PreflightDuringStream(t *testing.T) {
+	h := NewStreamHandler(&countingReaderAt{}, 0, pubsub.NewPubSub(), 0.30)
+	h.session.Lock()
+	defer h.session.Unlock()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodOptions, "/stream", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("preflight status %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "*")
 	}
 }
 

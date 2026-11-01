@@ -3,11 +3,11 @@ package eventhttphandler
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/owulveryck/goMarkableStream/internal/events"
 	"github.com/owulveryck/goMarkableStream/internal/pubsub"
+	"github.com/owulveryck/goMarkableStream/internal/remarkable"
 )
 
 const (
@@ -31,13 +31,27 @@ type EventHandler struct {
 
 // ServeHTTP implements http.Handler
 func (h *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Subscribe only to Pen events of type EvAbs
 	penSource := events.Pen
-	absType := uint16(events.EvAbs)
-	eventC := h.inputEventBus.SubscribeWithFilter("eventListener", pubsub.EventFilter{
-		Source: &penSource,
-		Type:   &absType,
-	})
+	var filter pubsub.EventFilter
+	thresh := pressureThreshold
+
+	if remarkable.Model == remarkable.Remarkable1 {
+		// rmview approach: subscribe to all pen events (EvAbs and EvKey for proximity)
+		// and use rmview's threshold (1000) for drawing vs hovering
+		filter = pubsub.EventFilter{
+			Source: &penSource,
+		}
+		thresh = 1000
+	} else {
+		// Keep RM2 and RMPP logic intact: Subscribe only to Pen events of type EvAbs
+		absType := uint16(events.EvAbs)
+		filter = pubsub.EventFilter{
+			Source: &penSource,
+			Type:   &absType,
+		}
+	}
+
+	eventC := h.inputEventBus.SubscribeWithFilter("eventListener", filter)
 	defer func() {
 		h.inputEventBus.Unsubscribe(eventC)
 	}()
@@ -69,7 +83,7 @@ func (h *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Only send SSE events when pen is hovering (not touching)
 			// When pen is down (drawing), the frame stream provides visual feedback
 			// so individual coordinate events are redundant
-			if currentPressure <= pressureThreshold {
+			if currentPressure <= thresh {
 				// Reset buffer and encode JSON
 				buf.Reset()
 				if err := encoder.Encode(event); err != nil {
@@ -79,8 +93,10 @@ func (h *EventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// Remove trailing newline added by Encode
 				jsonBytes := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 
-				// Send the event
-				fmt.Fprintf(w, "data: %s\n\n", jsonBytes)
+				// Send the event using direct writes (avoids fmt.Fprintf allocation)
+				w.Write([]byte("data: "))
+				w.Write(jsonBytes)
+				w.Write([]byte("\n\n"))
 				if flusher != nil {
 					flusher.Flush() // Ensure client receives the message immediately
 				}
