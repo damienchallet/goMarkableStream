@@ -32,6 +32,20 @@ builds:
     tags:
       - tailscale
 
+  - env:
+      - CGO_ENABLED=0
+    id: "Remarkable 1"
+    main: .
+    binary: gomarkablestream-RM1
+    goos:
+      - linux
+    goarch:
+      - arm
+    goarm:
+      - "7"
+    tags:
+      - tailscale
+
   # Without Tailscale (lighter binary)
   - env:
       - CGO_ENABLED=0
@@ -55,6 +69,18 @@ builds:
     goarm:
       - "7"
 
+  - env:
+      - CGO_ENABLED=0
+    id: "Remarkable 1 - No Tailscale"
+    main: .
+    binary: gomarkablestream-RM1-lite
+    goos:
+      - linux
+    goarch:
+      - arm
+    goarm:
+      - "7"
+
 archives:
   - formats:
       - binary
@@ -71,9 +97,7 @@ changelog:
       - "^test:"
 
 release:
-  github:
-    owner: owulveryck
-    name: gomarkablestream
+  # Repositories to release to defaults to current repository in CI environment.
   # Attach the GMS Console AppLoad app (built in the workflow before goreleaser
   # runs) alongside the main binaries.
   extra_files:

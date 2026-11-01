@@ -79,18 +79,21 @@ For older firmware versions:
 
 ## Available Binaries
 
-Each release provides four binary variants:
+Each release provides binary variants for each device family:
 
 | Binary | Device | Tailscale Support |
 |--------|--------|-------------------|
+| `gomarkablestream-RM1` | reMarkable 1 (arm) | Yes |
+| `gomarkablestream-RM1-lite` | reMarkable 1 (arm) | No |
+| `gomarkablestream-RM2` | reMarkable 2 (arm) | Yes |
+| `gomarkablestream-RM2-lite` | reMarkable 2 (arm) | No |
 | `gomarkablestream-RMPRO` | reMarkable Paper Pro (arm64) | Yes |
-| `gomarkablestream-RM2` | reMarkable 1 and reMarkable 2 (arm) | Yes |
 | `gomarkablestream-RMPRO-lite` | reMarkable Paper Pro (arm64) | No |
-| `gomarkablestream-RM2-lite` | reMarkable 1 and reMarkable 2 (arm) | No |
 
 **Which binary should I use?**
+- Use `RM1` variants for reMarkable 1
+- Use `RM2` variants for reMarkable 2
 - Use `RMPRO` variants for reMarkable Paper Pro
-- Use `RM2` variants for reMarkable 1 and reMarkable 2
 - Use `-lite` variants if you don't need Tailscale remote access (smaller binary size)
 
 ## Quick Start

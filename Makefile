@@ -39,3 +39,19 @@ build-remarkable-paper-pro: build
 .PHONY: build-remarkable-paper-pro-trace
 build-remarkable-paper-pro-trace: GOARCH=arm64
 build-remarkable-paper-pro-trace: build-with-trace
+
+# Local release builds into ./release/
+.PHONY: release-rm1
+release-rm1:
+	@mkdir -p release
+	@echo "Building RM1 release binaries into ./release/..."
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -tags tailscale -ldflags="-s -w" -o release/gomarkablestream-RM1 .
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o release/gomarkablestream-RM1-lite .
+
+.PHONY: release-all
+release-all: release-rm1
+	@echo "Building RM2 and Paper Pro release binaries into ./release/..."
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -tags tailscale -ldflags="-s -w" -o release/gomarkablestream-RM2 .
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o release/gomarkablestream-RM2-lite .
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -tags tailscale -ldflags="-s -w" -o release/gomarkablestream-RMPRO .
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o release/gomarkablestream-RMPRO-lite .
