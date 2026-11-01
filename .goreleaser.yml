@@ -82,8 +82,7 @@ builds:
       - "7"
 
 archives:
-  - formats:
-      - binary
+  - format: binary
     name_template: "{{ .Binary }}"
 
 checksum:
@@ -100,5 +99,7 @@ release:
   # Repositories to release to defaults to current repository in CI environment.
   # Attach the GMS Console AppLoad app (built in the workflow before goreleaser
   # runs) alongside the main binaries.
+  replace_existing_artifacts: true
+  mode: replace
   extra_files:
     - glob: ./tools/appload-console/build/gms-console-RM2.zip
